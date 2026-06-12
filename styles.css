@@ -1,0 +1,434 @@
+/* ============================================================
+   Dashboard Estadístico de Nicaragua — Estilos Personalizados
+   Fuente: Inter (Google Fonts)
+   Paleta: Azul oscuro / Cian / Glassmorphism
+   ============================================================ */
+
+/* ── Importar fuente Inter desde Google Fonts ─────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ── Variables CSS (tokens del sistema de diseño) ─────────── */
+:root {
+    --color-bg:         #0D1117;
+    --color-surface:    #161B22;
+    --color-border:     #30363D;
+    --color-primary:    #00B4D8;
+    --color-secondary:  #0077B6;
+    --color-accent:     #90E0EF;
+    --color-success:    #3FB950;
+    --color-warning:    #F78166;
+    --color-purple:     #A371F7;
+    --color-text:       #E6EDF3;
+    --color-muted:      #8B949E;
+    --radius-sm:        8px;
+    --radius-md:        12px;
+    --radius-lg:        16px;
+    --shadow-glow:      0 0 20px rgba(0, 180, 216, 0.2);
+    --transition:       all 0.25s ease;
+}
+
+/* ── Reset y base ─────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+html, body, [class*="css"] {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    color: var(--color-text) !important;
+}
+
+/* Fondo principal */
+.stApp {
+    background: linear-gradient(135deg, #0D1117 0%, #0a0f16 50%, #0D1117 100%) !important;
+}
+
+/* ── HERO HEADER ──────────────────────────────────────────── */
+.hero-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 28px 32px;
+    background: linear-gradient(
+        135deg,
+        rgba(0, 119, 182, 0.25) 0%,
+        rgba(0, 180, 216, 0.12) 50%,
+        rgba(144, 224, 239, 0.08) 100%
+    );
+    border: 1px solid rgba(0, 180, 216, 0.3);
+    border-radius: var(--radius-lg);
+    margin-bottom: 28px;
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-glow), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Efecto decorativo de fondo */
+.hero-header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0, 180, 216, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.hero-flag {
+    font-size: 52px;
+    line-height: 1;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+    flex-shrink: 0;
+}
+
+.hero-text h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--color-text) !important;
+    margin: 0 0 6px 0;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #E6EDF3 0%, var(--color-accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.hero-subtitle {
+    font-size: 1rem;
+    color: var(--color-muted) !important;
+    margin: 0;
+    font-weight: 400;
+}
+
+.hero-subtitle strong {
+    color: var(--color-accent) !important;
+}
+
+/* ── SIDEBAR ──────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0D1117 0%, #0a1520 100%) !important;
+    border-right: 1px solid var(--color-border) !important;
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding: 1.5rem 1rem !important;
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 8px;
+    background: rgba(0, 180, 216, 0.1);
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(0, 180, 216, 0.2);
+    margin-bottom: 8px;
+}
+
+.sidebar-icon {
+    font-size: 24px;
+}
+
+.sidebar-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--color-primary) !important;
+    letter-spacing: 0.02em;
+}
+
+.sidebar-info {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    font-size: 0.82rem;
+    color: var(--color-muted) !important;
+    line-height: 1.8;
+}
+
+.sidebar-info p { margin: 0; }
+.sidebar-info strong { color: var(--color-text) !important; }
+.sidebar-info code {
+    background: rgba(0, 180, 216, 0.15);
+    color: var(--color-primary) !important;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.sidebar-info hr {
+    border-color: var(--color-border);
+    margin: 8px 0;
+}
+
+/* ── TARJETAS DE ESTADÍSTICAS ─────────────────────────────── */
+.stat-card {
+    padding: 20px 18px;
+    border-radius: var(--radius-md);
+    border: 1px solid;
+    text-align: center;
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* Variantes de color */
+.stat-card-blue {
+    background: rgba(0, 180, 216, 0.08);
+    border-color: rgba(0, 180, 216, 0.25);
+}
+.stat-card-blue::before { background: var(--color-primary); }
+
+.stat-card-green {
+    background: rgba(63, 185, 80, 0.08);
+    border-color: rgba(63, 185, 80, 0.25);
+}
+.stat-card-green::before { background: var(--color-success); }
+
+.stat-card-red {
+    background: rgba(247, 129, 102, 0.08);
+    border-color: rgba(247, 129, 102, 0.25);
+}
+.stat-card-red::before { background: var(--color-warning); }
+
+.stat-card-purple {
+    background: rgba(163, 113, 247, 0.08);
+    border-color: rgba(163, 113, 247, 0.25);
+}
+.stat-card-purple::before { background: var(--color-purple); }
+
+/* Hover effect */
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+.stat-icon {
+    font-size: 1.5rem;
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-muted) !important;
+    margin-bottom: 6px;
+}
+
+.stat-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--color-text) !important;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    word-break: break-all;
+}
+
+.stat-sub {
+    font-size: 0.78rem;
+    color: var(--color-muted) !important;
+    margin-top: 4px;
+}
+
+/* ── MINI TARJETAS (PANORAMA GENERAL) ─────────────────────── */
+.mini-card {
+    padding: 18px 14px;
+    background: rgba(22, 27, 34, 0.8);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-align: center;
+    transition: var(--transition);
+    backdrop-filter: blur(8px);
+    min-height: 130px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.mini-card:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
+}
+
+.mini-card-error {
+    opacity: 0.5;
+    border-style: dashed;
+}
+
+.mini-card-icon { font-size: 1.4rem; }
+
+.mini-card-nombre {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-muted) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+}
+
+.mini-card-valor {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--color-primary) !important;
+    word-break: break-all;
+}
+
+.mini-card-anio {
+    font-size: 0.72rem;
+    color: var(--color-muted) !important;
+}
+
+/* ── STREAMLIT COMPONENTES ────────────────────────────────── */
+
+/* Títulos de sección */
+h2 {
+    font-size: 1.3rem !important;
+    font-weight: 700 !important;
+    color: var(--color-text) !important;
+    letter-spacing: -0.01em !important;
+    margin-top: 1.5rem !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid var(--color-border) !important;
+}
+
+/* Botón principal */
+.stButton > button {
+    background: linear-gradient(135deg, var(--color-secondary), var(--color-primary)) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: var(--radius-sm) !important;
+    font-weight: 600 !important;
+    transition: var(--transition) !important;
+    box-shadow: 0 4px 12px rgba(0, 180, 216, 0.3) !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(0, 180, 216, 0.45) !important;
+}
+
+/* Download button */
+.stDownloadButton > button {
+    background: rgba(0, 180, 216, 0.12) !important;
+    color: var(--color-primary) !important;
+    border: 1px solid rgba(0, 180, 216, 0.3) !important;
+    border-radius: var(--radius-sm) !important;
+    font-weight: 600 !important;
+    width: 100% !important;
+    margin-top: 12px !important;
+    transition: var(--transition) !important;
+}
+
+.stDownloadButton > button:hover {
+    background: rgba(0, 180, 216, 0.22) !important;
+    box-shadow: var(--shadow-glow) !important;
+}
+
+/* Selectbox */
+[data-testid="stSelectbox"] > div > div {
+    background: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--color-text) !important;
+}
+
+/* Spinner */
+.stSpinner > div {
+    border-color: var(--color-primary) transparent transparent transparent !important;
+}
+
+/* Info / Warning / Error boxes */
+[data-testid="stAlert"] {
+    border-radius: var(--radius-md) !important;
+    border-width: 1px !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+    background: rgba(22, 27, 34, 0.6) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    border-radius: var(--radius-md) !important;
+    overflow: hidden !important;
+}
+
+/* Number input */
+[data-testid="stNumberInput"] input {
+    background: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    color: var(--color-text) !important;
+    border-radius: var(--radius-sm) !important;
+}
+
+/* Radio buttons */
+[data-testid="stRadio"] label {
+    color: var(--color-text) !important;
+}
+
+/* Divisor (hr) */
+hr {
+    border-color: var(--color-border) !important;
+    margin: 0.8rem 0 !important;
+}
+
+/* Plotly chart container */
+[data-testid="stPlotlyChart"] {
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden !important;
+}
+
+/* ── PIE DE PÁGINA ────────────────────────────────────────── */
+.footer {
+    margin-top: 48px;
+    padding: 20px;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--color-muted) !important;
+    border-top: 1px solid var(--color-border);
+}
+
+.footer a {
+    color: var(--color-primary) !important;
+    text-decoration: none;
+}
+
+.footer a:hover {
+    text-decoration: underline;
+}
+
+/* ── SCROLLBAR PERSONALIZADO ──────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
+}
