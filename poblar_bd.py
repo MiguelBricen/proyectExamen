@@ -1,78 +1,61 @@
-"""Script para poblar la base de datos local con todos los indicadores."""
+"""
+Script para poblar la base de datos local con todos los indicadores utilizando la Arquitectura Hexagonal.
+"""
 import sys
-import requests
-import pandas as pd
+from infrastructure.database.migrations import run_migrations
+from application.services import crear_servicio_aplicacion, DEFAULT_CATALOG
 
 sys.stdout.reconfigure(encoding="utf-8")
-
-from data_fetcher import INDICADORES, CODIGO_PAIS, BASE_URL
-from database import (
-    inicializar_base_datos,
-    guardar_indicadores,
-    guardar_datos,
-    obtener_resumen_bd,
-)
 
 ANIO_INICIO = 1960
 ANIO_FIN = 2023
 
-print("=" * 50)
-print("Descarga de datos: Banco Mundial -> SQLite")
-print("=" * 50)
+print("=" * 60)
+print("Población de Datos (Hexagonal): Banco Mundial -> SQLite")
+print("=" * 60)
 
-inicializar_base_datos()
-guardar_indicadores(INDICADORES)
+# 1. Correr migraciones para asegurar el esquema e integridad de datos
+print("\nEjecutando migraciones de base de datos...")
+run_migrations()
+print("Base de datos e integridad listas (CHECK constraints, triggers).")
+
+# 2. Inicializar el servicio de aplicación
+servicio = crear_servicio_aplicacion()
+
+# 3. Inicializar catálogo de indicadores en la BD
+print("\nInicializando catálogo de indicadores...")
+servicio.inicializar_catalogo()
 
 exitosos = 0
+total = len(DEFAULT_CATALOG)
 
-for nombre, meta in INDICADORES.items():
+# 4. Descargar datos para cada indicador
+for nombre, meta in DEFAULT_CATALOG.items():
     codigo = meta["codigo"]
-    print(f"\nDescargando: {nombre}")
-    print(f"  Codigo: {codigo}")
-
-    url = (
-        f"{BASE_URL}/country/{CODIGO_PAIS}"
-        f"/indicator/{codigo}"
-        f"?date={ANIO_INICIO}:{ANIO_FIN}"
-        f"&format=json&per_page=100"
-    )
+    print(f"\nDescargando serie: {nombre}")
+    print(f"  Código externo: {codigo}")
 
     try:
-        resp = requests.get(url, timeout=20)
-        resp.raise_for_status()
-        datos = resp.json()
+        # Descarga forzada para poblar o actualizar con datos de la API
+        resultado = servicio.obtener_datos_indicador(
+            codigo_externo=codigo,
+            anio_inicio=ANIO_INICIO,
+            anio_fin=ANIO_FIN,
+            forzar_descarga=True
+        )
 
-        if datos and len(datos) >= 2 and datos[1]:
-            filas = []
-            for r in datos[1]:
-                if r.get("date") is not None:
-                    v = r.get("value")
-                    filas.append({
-                        "año": int(r["date"]),
-                        "valor": float(v) if v is not None else None,
-                    })
+        validos = len(resultado.datos)
+        print(f"  OK: {validos} registros descargados y validados en dominio.")
+        exitosos += 1
 
-            df = pd.DataFrame(filas, columns=["año", "valor"])
-            df = df.sort_values("año").reset_index(drop=True)
-            guardar_datos(codigo, df, ANIO_INICIO, ANIO_FIN)
-            validos = df["valor"].notna().sum()
-            print(f"  OK: {len(df)} registros ({validos} con valor)")
-            exitosos += 1
-        else:
-            print("  Sin datos en la respuesta.")
-
-    except requests.exceptions.ConnectionError:
-        print("\nERROR: Sin conexion a internet.")
-        print("Conectate al WiFi e intenta de nuevo.")
-        sys.exit(1)
     except Exception as e:
-        print(f"  ERROR: {e}")
+        print(f"  ERROR: No se pudieron obtener datos para {nombre}: {e}")
 
-resumen = obtener_resumen_bd()
-print("\n" + "=" * 50)
+resumen = servicio.obtener_resumen_bd()
+print("\n" + "=" * 60)
 print("COMPLETADO")
-print(f"  Indicadores: {exitosos}/{len(INDICADORES)}")
-print(f"  Registros:   {resumen['total_registros']}")
-print(f"  Archivo:     nicaragua_data.db")
-print("=" * 50)
-print("\nEl dashboard ahora funciona sin internet.")
+print(f"  Indicadores: {exitosos}/{total} descargados con éxito.")
+print(f"  Registros en BD:   {resumen['total_registros']}")
+print(f"  Archivo de BD:     {resumen['ruta']}")
+print("=" * 60)
+print("\nEl dashboard local ya se encuentra poblado y listo para uso offline.")

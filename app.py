@@ -1,60 +1,80 @@
 """
 =============================================================
-  Dashboard Estadístico de Nicaragua - Banco Mundial
+  Dashboard Estadístico de Nicaragua - Banco Mundial (Hexagonal)
 =============================================================
   Autor   : Proyecto Examen - Administración de S.O.
   Fecha   : 2026
-  Librerías: streamlit, pandas, requests, plotly
+  Librerías: streamlit, pandas, plotly
   Fuente  : API pública del Banco Mundial (World Bank API)
 =============================================================
-
-Este archivo es el punto de entrada principal de la aplicación.
-Importa los módulos de datos y visualización, construye la
-interfaz y coordina todos los componentes del dashboard.
 """
 
 import streamlit as st
 import pandas as pd
-import requests
 
-# Módulos locales del proyecto
-from data_fetcher import (
-    obtener_datos_indicador,
-    INDICADORES,
-    NOMBRE_PAIS,
-    CODIGO_PAIS,
-    BASE_URL,
-)
+# Módulos locales de la nueva arquitectura hexagonal
+from application.services import crear_servicio_aplicacion
+from domain.exceptions import ApiCaidaError, DatosNoEncontradosError
+from presentation.ui_adapter import INDICADORES
 from charts import (
     grafico_linea,
     grafico_barras,
     grafico_area,
     tarjetas_estadisticas,
 )
-from database import (
-    obtener_resumen_bd,
-    fecha_ultima_descarga,
-    tiene_datos_en_cache,
-    guardar_indicadores,
-    guardar_datos,
-    inicializar_base_datos,
-)
+
+# Inicialización única del servicio de aplicación mediante la fábrica de dependencias
+app_service = crear_servicio_aplicacion()
+app_service.inicializar_catalogo()
+
+
+# ──────────────────────────────────────────────────────────────
+# OBTENCIÓN Y CACHEO DE DATOS EN LA PRESENTACIÓN
+# ──────────────────────────────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def obtener_datos_dataframe(codigo_externo: str, anio_inicio: int, anio_fin: int) -> pd.DataFrame:
+    """
+    Obtiene los datos históricos del servicio de aplicación y los transforma
+    en un DataFrame de pandas con formato ['año', 'valor'].
+    """
+    try:
+        # Intentar obtener los datos (puede descargar de API o cargar de cache SQLite)
+        resultado = app_service.obtener_datos_indicador(
+            codigo_externo=codigo_externo,
+            anio_inicio=anio_inicio,
+            anio_fin=anio_fin,
+            forzar_descarga=False
+        )
+        st.session_state["offline_mode"] = (resultado.fuente_efectiva == "Base de Datos Local (Offline)")
+        serie = resultado.datos
+    except (ApiCaidaError, DatosNoEncontradosError) as ex:
+        # Excepciones del dominio capturadas en la UI
+        st.sidebar.warning(f"⚠️ {ex.mensaje}")
+        st.session_state["offline_mode"] = True
+        return pd.DataFrame(columns=["año", "valor"])
+    except Exception as ex:
+        st.sidebar.error(f"❌ Error inesperado: {ex}")
+        st.session_state["offline_mode"] = True
+        return pd.DataFrame(columns=["año", "valor"])
+
+    if not serie:
+        return pd.DataFrame(columns=["año", "valor"])
+
+    # Transformar a DataFrame para compatibilidad con charts.py
+    rows = [{"año": d.anio.value, "valor": d.valor.value} for d in serie]
+    return pd.DataFrame(rows, columns=["año", "valor"])
+
 
 # ──────────────────────────────────────────────────────────────
 # DESCARGA MASIVA: POBLAR BASE DE DATOS LOCAL
 # ──────────────────────────────────────────────────────────────
 def _descargar_todos_los_datos():
     """
-    Descarga todos los indicadores del Banco Mundial y los guarda
-    en SQLite. Llamado cuando el usuario pulsa el botón del sidebar.
-    Usa requests directamente (sin caché de Streamlit) para
-    garantizar que los datos lleguen a la base de datos.
+    Descarga todos los indicadores del Banco Mundial y los guarda en SQLite.
+    Llamado cuando el usuario pulsa el botón del sidebar.
     """
     ANIO_INICIO = 1960
     ANIO_FIN    = 2023
-
-    inicializar_base_datos()
-    guardar_indicadores(INDICADORES)
 
     progreso = st.sidebar.progress(0, text="Iniciando descarga...")
     total    = len(INDICADORES)
@@ -67,43 +87,20 @@ def _descargar_todos_los_datos():
             text=f"⎳ Descargando: {nombre}",
         )
 
-        url = (
-            f"{BASE_URL}/country/{CODIGO_PAIS}"
-            f"/indicator/{codigo}"
-            f"?date={ANIO_INICIO}:{ANIO_FIN}"
-            f"&format=json&per_page=100"
-        )
         try:
-            resp = requests.get(url, timeout=20)
-            resp.raise_for_status()
-            datos = resp.json()
-
-            if datos and len(datos) >= 2 and datos[1]:
-                filas = []
-                for reg in datos[1]:
-                    if reg.get("date") is not None:
-                        v = reg.get("value")
-                        filas.append({
-                            "año":   int(reg["date"]),
-                            "valor": float(v) if v is not None else None,
-                        })
-                import pandas as pd
-                df = pd.DataFrame(filas, columns=["año", "valor"])
-                df = df.sort_values("año").reset_index(drop=True)
-                guardar_datos(codigo, df, ANIO_INICIO, ANIO_FIN)
-                exitosos += 1
-
-        except requests.exceptions.ConnectionError:
-            progreso.empty()
-            st.sidebar.error(
-                "❌ Sin conexión a internet.\nConectate al WiFi e intenta de nuevo."
+            # Forzamos la descarga desde el servicio
+            app_service.obtener_datos_indicador(
+                codigo_externo=codigo,
+                anio_inicio=ANIO_INICIO,
+                anio_fin=ANIO_FIN,
+                forzar_descarga=True
             )
-            return
-        except Exception:
-            pass  # Continuar con el siguiente indicador
+            exitosos += 1
+        except Exception as e:
+            print(f"Error descargando {nombre} para población: {e}")
 
     progreso.progress(100, text="✅ ¡Descarga completada!")
-    resumen = obtener_resumen_bd()
+    resumen = app_service.obtener_resumen_bd()
     st.sidebar.success(
         f"✅ **{resumen['total_registros']} registros** guardados.\n\n"
         f"{exitosos}/{total} indicadores descargados."
@@ -156,16 +153,6 @@ def mostrar_encabezado():
 def construir_sidebar() -> dict:
     """
     Construye el panel lateral con todos los controles de usuario.
-
-    Retorna
-    -------
-    dict
-        Diccionario con las opciones seleccionadas:
-        - indicador_clave  : código World Bank del indicador
-        - indicador_nombre : nombre legible del indicador
-        - anio_inicio      : año de inicio del rango
-        - anio_fin         : año final del rango
-        - tipo_grafico     : tipo de visualización elegida
     """
     with st.sidebar:
         # Logo / título lateral
@@ -225,7 +212,7 @@ def construir_sidebar() -> dict:
 
         # ── Estado de la base de datos local ──────────────────
         st.markdown("### 🗳️ Base de datos local")
-        resumen_bd = obtener_resumen_bd()
+        resumen_bd = app_service.obtener_resumen_bd()
 
         if resumen_bd["total_registros"] > 0:
             st.success(
@@ -234,7 +221,7 @@ def construir_sidebar() -> dict:
                 icon=None,
             )
             # Mostrar fecha de última descarga del indicador actual
-            ultima = fecha_ultima_descarga(indicador_clave)
+            ultima = app_service.obtener_fecha_ultima_descarga(indicador_clave)
             if ultima:
                 fecha_fmt = ultima.split(" ")[0]
                 st.caption(f"🕒 Última descarga: **{fecha_fmt}**")
@@ -284,14 +271,8 @@ def construir_sidebar() -> dict:
 def mostrar_estadisticas(df: pd.DataFrame, opciones: dict):
     """
     Muestra las tarjetas de estadísticas (promedio, máx, mín, total).
-
-    Parámetros
-    ----------
-    df      : DataFrame con columnas ['año', 'valor']
-    opciones: dict con la configuración del usuario
     """
     st.markdown("##  Estadísticas del período")
-
     unidad = INDICADORES[opciones["indicador_nombre"]]["unidad"]
     tarjetas_estadisticas(df, unidad)
 
@@ -302,11 +283,6 @@ def mostrar_estadisticas(df: pd.DataFrame, opciones: dict):
 def mostrar_grafico(df: pd.DataFrame, opciones: dict):
     """
     Renderiza el gráfico interactivo según el tipo elegido.
-
-    Parámetros
-    ----------
-    df      : DataFrame con columnas ['año', 'valor']
-    opciones: dict con la configuración del usuario
     """
     st.markdown("##  Evolución histórica")
 
@@ -335,11 +311,6 @@ def mostrar_grafico(df: pd.DataFrame, opciones: dict):
 def mostrar_tabla(df: pd.DataFrame, opciones: dict):
     """
     Muestra la tabla de datos crudos con opción de descarga CSV.
-
-    Parámetros
-    ----------
-    df      : DataFrame con columnas ['año', 'valor']
-    opciones: dict con configuración del usuario
     """
     with st.expander(" Ver tabla de datos completa", expanded=False):
         col_tabla, col_descarga = st.columns([3, 1])
@@ -372,11 +343,6 @@ def mostrar_resumen_general(anio_inicio: int, anio_fin: int):
     """
     Muestra una vista rápida de todos los indicadores para el
     último año disponible en el rango seleccionado.
-
-    Parámetros
-    ----------
-    anio_inicio : año inicial del rango
-    anio_fin    : año final del rango
     """
     st.markdown("---")
     st.markdown("##  Panorama general — Último valor disponible")
@@ -386,7 +352,7 @@ def mostrar_resumen_general(anio_inicio: int, anio_fin: int):
     for idx, (nombre, meta) in enumerate(INDICADORES.items()):
         with cols[idx]:
             # Obtener datos del indicador (con caché automático)
-            df_ind = obtener_datos_indicador(meta["codigo"], anio_inicio, anio_fin)
+            df_ind = obtener_datos_dataframe(meta["codigo"], anio_inicio, anio_fin)
 
             if df_ind is not None and not df_ind.empty:
                 ultimo = df_ind.dropna(subset=["valor"]).sort_values("año").iloc[-1]
@@ -423,8 +389,6 @@ def mostrar_resumen_general(anio_inicio: int, anio_fin: int):
 def main():
     """
     Punto de entrada principal del dashboard.
-    Coordina la carga de datos, la construcción de la interfaz
-    y el manejo de errores globales.
     """
     # 1. Encabezado
     mostrar_encabezado()
@@ -432,45 +396,21 @@ def main():
     # 2. Controles laterales → obtener opciones del usuario
     opciones = construir_sidebar()
 
-    # 3. Cargar datos desde la API del Banco Mundial
+    # 3. Cargar datos
     with st.spinner(f" Cargando datos de **{opciones['indicador_nombre']}**..."):
-        df = obtener_datos_indicador(
-            codigo_indicador=opciones["indicador_clave"],
+        df = obtener_datos_dataframe(
+            codigo_externo=opciones["indicador_clave"],
             anio_inicio=opciones["anio_inicio"],
             anio_fin=opciones["anio_fin"],
         )
 
-    # 4. Manejo de errores: API no disponible o sin datos
-    if df is None:
-        # Verificar si hay datos en la BD local para este indicador
-        hay_datos_local = tiene_datos_en_cache(
-            opciones["indicador_clave"],
-            opciones["anio_inicio"],
-            opciones["anio_fin"],
+    # 4. Manejo de estado offline / errores
+    if st.session_state.get("offline_mode", False):
+        st.warning(
+            "📴 **Sin conexión a Internet** — Mostrando datos almacenados localmente.\n\n"
+            "Los datos provienen de la base de datos SQLite local del dispositivo.",
+            icon=None,
         )
-        if hay_datos_local:
-            st.warning(
-                "📴 **Sin conexión a Internet** — Mostrando datos almacenados localmente.\n\n"
-                "Los datos provienen de la base de datos SQLite local del dispositivo.",
-                icon=None,
-            )
-            # Reintentar desde la BD local directamente
-            from database import obtener_datos_local
-            df = obtener_datos_local(
-                opciones["indicador_clave"],
-                opciones["anio_inicio"],
-                opciones["anio_fin"],
-            )
-            if df is None:
-                st.stop()
-        else:
-            st.error(
-                "🔌 **Error de conexión**: No se pudo obtener datos de la API del Banco Mundial.\n\n"
-                "Verifica tu conexión a Internet e intenta de nuevo.\n\n"
-                "🗳️ **No hay datos locales** para este indicador todavía.",
-                icon=None,
-            )
-            st.stop()
 
     if df.empty or df["valor"].isna().all():
         st.warning(

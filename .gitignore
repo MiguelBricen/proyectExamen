@@ -1,0 +1,22 @@
+# Python caches and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+
+# Databases and local state
+*.db
+*.sqlite
+
+# Streamlit configuration and caches
+.streamlit/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+Desktop.ini

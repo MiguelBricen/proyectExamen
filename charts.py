@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import streamlit as st
+from presentation.ui_adapter import obtener_formato_hover
 
 # ──────────────────────────────────────────────────────────────
 # PALETA DE COLORES DEL DASHBOARD
@@ -74,14 +75,7 @@ def _formato_hover(unidad: str) -> str:
     str
         Plantilla de formato para plotly.
     """
-    if unidad == "USD":
-        return "%{y:$,.2f}"
-    elif unidad == "%":
-        return "%{y:.2f}%"
-    elif unidad == "personas":
-        return "%{y:,.0f}"
-    else:
-        return "%{y:.2f}"
+    return obtener_formato_hover(unidad)
 
 
 # ──────────────────────────────────────────────────────────────
