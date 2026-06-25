@@ -12,11 +12,11 @@ TEST_DB_PATH = os.path.join(
 )
 
 # Parchear RUTA_BD antes de importar
-with patch("infrastructure.database.connection.RUTA_BD", TEST_DB_PATH):
-    from infrastructure.database.connection import get_connection
-    from infrastructure.database.migrations import run_migrations
-    from infrastructure.repositories.sqlite_repositories import SQLiteIndicadorRepository, SQLiteDatoHistoricoRepository
-    from infrastructure.cache.cache_service import CacheService
+with patch("infrastructure.adapters.outbound.sqlite.connection.RUTA_BD", TEST_DB_PATH):
+    from infrastructure.adapters.outbound.sqlite.connection import get_connection
+    from infrastructure.adapters.outbound.sqlite.migrations import run_migrations
+    from infrastructure.adapters.outbound.sqlite.sqlite_repositories import SQLiteIndicadorRepository, SQLiteDatoHistoricoRepository
+    from infrastructure.adapters.outbound.cache.sqlite_cache_service import SQLiteCacheService
     from domain.entities import IndicadorEconomico, DatoHistorico
     from domain.value_objects import Year, Percentage, Source
     from domain.events import EventDispatcher, IndicadorCreado, DatoHistoricoAgregado, SerieActualizada
@@ -34,10 +34,10 @@ class TestRepositoriesAndCache(unittest.TestCase):
 
         # Iniciar parches
         self.patchers = [
-            patch("infrastructure.database.connection.RUTA_BD", TEST_DB_PATH),
-            patch("infrastructure.database.migrations.get_connection", get_connection),
-            patch("infrastructure.repositories.sqlite_repositories.get_connection", get_connection),
-            patch("infrastructure.cache.cache_service.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.sqlite.connection.RUTA_BD", TEST_DB_PATH),
+            patch("infrastructure.adapters.outbound.sqlite.migrations.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.sqlite.sqlite_repositories.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.cache.sqlite_cache_service.get_connection", get_connection),
         ]
         for p in self.patchers:
             p.start()
@@ -47,7 +47,7 @@ class TestRepositoriesAndCache(unittest.TestCase):
 
         self.indicador_repo = SQLiteIndicadorRepository()
         self.dato_repo = SQLiteDatoHistoricoRepository(self.indicador_repo)
-        self.cache_service = CacheService()
+        self.cache_service = SQLiteCacheService()
 
         # Limpiar listeners de eventos para pruebas
         EventDispatcher._listeners = {}
@@ -188,10 +188,10 @@ class TestDashboardApplicationService(unittest.TestCase):
 
         # Iniciar parches
         self.patchers = [
-            patch("infrastructure.database.connection.RUTA_BD", TEST_DB_PATH),
-            patch("infrastructure.database.migrations.get_connection", get_connection),
-            patch("infrastructure.repositories.sqlite_repositories.get_connection", get_connection),
-            patch("infrastructure.cache.cache_service.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.sqlite.connection.RUTA_BD", TEST_DB_PATH),
+            patch("infrastructure.adapters.outbound.sqlite.migrations.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.sqlite.sqlite_repositories.get_connection", get_connection),
+            patch("infrastructure.adapters.outbound.cache.sqlite_cache_service.get_connection", get_connection),
         ]
         for p in self.patchers:
             p.start()
@@ -200,7 +200,7 @@ class TestDashboardApplicationService(unittest.TestCase):
         run_migrations()
 
         # Usar la fábrica para crear el servicio con inyección de dependencias
-        from application.services import crear_servicio_aplicacion
+        from application.services.dashboard_application_service import crear_servicio_aplicacion
         self.service = crear_servicio_aplicacion()
         self.service.inicializar_catalogo()
 
@@ -215,11 +215,12 @@ class TestDashboardApplicationService(unittest.TestCase):
                 pass
 
     def test_obtener_datos_fallback_offline(self):
-        from domain.exceptions import DatosNoEncontradosError
+        from domain.exceptions import DatosNoEncontradosError, ApiCaidaError
         
-        # 1. Al consultar un indicador sin caché ni red, debe lanzar DatosNoEncontradosError (porque la API fallará/no hay internet)
-        with self.assertRaises(DatosNoEncontradosError):
-            self.service.obtener_datos_indicador("FP.CPI.TOTL.ZG", 2000, 2020, forzar_descarga=True)
+        # 1. Al consultar un indicador sin caché ni red (simulada con patch), debe lanzar DatosNoEncontradosError
+        with patch.object(self.service.api_repo, 'obtener_datos', side_effect=ApiCaidaError("Error de conexión simulado")):
+            with self.assertRaises(DatosNoEncontradosError):
+                self.service.obtener_datos_indicador("FP.CPI.TOTL.ZG", 2000, 2020, forzar_descarga=True)
 
         # 2. Ahora simulamos datos guardados en SQLite
         indicador = self.service.indicador_repo.buscar_por_codigo_externo("FP.CPI.TOTL.ZG")

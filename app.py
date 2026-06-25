@@ -13,9 +13,8 @@ import streamlit as st
 import pandas as pd
 
 # Módulos locales de la nueva arquitectura hexagonal
-from application.services import crear_servicio_aplicacion
-from domain.exceptions import ApiCaidaError, DatosNoEncontradosError
-from presentation.ui_adapter import INDICADORES
+from application.services.dashboard_application_service import crear_servicio_aplicacion
+from presentation.ui_adapter import INDICADORES, obtener_datos_dataframe_ui
 from charts import (
     grafico_linea,
     grafico_barras,
@@ -26,43 +25,6 @@ from charts import (
 # Inicialización única del servicio de aplicación mediante la fábrica de dependencias
 app_service = crear_servicio_aplicacion()
 app_service.inicializar_catalogo()
-
-
-# ──────────────────────────────────────────────────────────────
-# OBTENCIÓN Y CACHEO DE DATOS EN LA PRESENTACIÓN
-# ──────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
-def obtener_datos_dataframe(codigo_externo: str, anio_inicio: int, anio_fin: int) -> pd.DataFrame:
-    """
-    Obtiene los datos históricos del servicio de aplicación y los transforma
-    en un DataFrame de pandas con formato ['año', 'valor'].
-    """
-    try:
-        # Intentar obtener los datos (puede descargar de API o cargar de cache SQLite)
-        resultado = app_service.obtener_datos_indicador(
-            codigo_externo=codigo_externo,
-            anio_inicio=anio_inicio,
-            anio_fin=anio_fin,
-            forzar_descarga=False
-        )
-        st.session_state["offline_mode"] = (resultado.fuente_efectiva == "Base de Datos Local (Offline)")
-        serie = resultado.datos
-    except (ApiCaidaError, DatosNoEncontradosError) as ex:
-        # Excepciones del dominio capturadas en la UI
-        st.sidebar.warning(f"⚠️ {ex.mensaje}")
-        st.session_state["offline_mode"] = True
-        return pd.DataFrame(columns=["año", "valor"])
-    except Exception as ex:
-        st.sidebar.error(f"❌ Error inesperado: {ex}")
-        st.session_state["offline_mode"] = True
-        return pd.DataFrame(columns=["año", "valor"])
-
-    if not serie:
-        return pd.DataFrame(columns=["año", "valor"])
-
-    # Transformar a DataFrame para compatibilidad con charts.py
-    rows = [{"año": d.anio.value, "valor": d.valor.value} for d in serie]
-    return pd.DataFrame(rows, columns=["año", "valor"])
 
 
 # ──────────────────────────────────────────────────────────────
@@ -352,7 +314,7 @@ def mostrar_resumen_general(anio_inicio: int, anio_fin: int):
     for idx, (nombre, meta) in enumerate(INDICADORES.items()):
         with cols[idx]:
             # Obtener datos del indicador (con caché automático)
-            df_ind = obtener_datos_dataframe(meta["codigo"], anio_inicio, anio_fin)
+            df_ind = obtener_datos_dataframe_ui(app_service, meta["codigo"], anio_inicio, anio_fin)
 
             if df_ind is not None and not df_ind.empty:
                 ultimo = df_ind.dropna(subset=["valor"]).sort_values("año").iloc[-1]
@@ -398,7 +360,8 @@ def main():
 
     # 3. Cargar datos
     with st.spinner(f" Cargando datos de **{opciones['indicador_nombre']}**..."):
-        df = obtener_datos_dataframe(
+        df = obtener_datos_dataframe_ui(
+            _app_service=app_service,
             codigo_externo=opciones["indicador_clave"],
             anio_inicio=opciones["anio_inicio"],
             anio_fin=opciones["anio_fin"],

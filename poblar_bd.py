@@ -2,8 +2,9 @@
 Script para poblar la base de datos local con todos los indicadores utilizando la Arquitectura Hexagonal.
 """
 import sys
-from infrastructure.database.migrations import run_migrations
-from application.services import crear_servicio_aplicacion, DEFAULT_CATALOG
+from infrastructure.adapters.outbound.sqlite.migrations import run_migrations
+from application.services.dashboard_application_service import crear_servicio_aplicacion
+from domain.catalog import INDICADOR_CATALOG
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -27,10 +28,10 @@ print("\nInicializando catálogo de indicadores...")
 servicio.inicializar_catalogo()
 
 exitosos = 0
-total = len(DEFAULT_CATALOG)
+total = len(INDICADOR_CATALOG)
 
 # 4. Descargar datos para cada indicador
-for nombre, meta in DEFAULT_CATALOG.items():
+for nombre, meta in INDICADOR_CATALOG.items():
     codigo = meta["codigo"]
     print(f"\nDescargando serie: {nombre}")
     print(f"  Código externo: {codigo}")

@@ -1,14 +1,13 @@
 """
-Adaptador de infraestructura para consumir la API externa del Banco Mundial.
+Adaptador de infraestructura para consumir la API externa del Banco Mundial (Puerto de salida).
 Retorna directamente entidades de dominio limpias y validadas.
 """
 import requests
 from typing import List
+from application.ports.outbound.external_api_repository import ExternalApiRepository
 from domain.entities import IndicadorEconomico, DatoHistorico
-from domain.value_objects import Year, Source
-from domain.repositories import ExternalApiRepository
+from domain.value_objects import Year, Source, crear_valor_vo
 from domain.exceptions import ApiCaidaError
-from infrastructure.repositories.sqlite_repositories import crear_valor_vo
 
 class WorldBankApiRepository(ExternalApiRepository):
     """
@@ -26,7 +25,7 @@ class WorldBankApiRepository(ExternalApiRepository):
     ) -> List[DatoHistorico]:
         """
         Consulta la API para el indicador y rango de años provisto.
-        Filtra y omite los registros que no posean valor (evitando nulos).
+        Filtra y omite los registros que no posean valor.
         """
         if not indicador.codigo_banco_mundial:
             return []
@@ -54,8 +53,6 @@ class WorldBankApiRepository(ExternalApiRepository):
                 anio_str = reg.get("date")
                 valor_raw = reg.get("value")
 
-                # Regla de integridad: Si el Banco Mundial no reportó valor para un año,
-                # no se debe crear el registro (valor no nullable).
                 if anio_str is not None and valor_raw is not None:
                     try:
                         anio_vo = Year(int(anio_str))
@@ -71,20 +68,16 @@ class WorldBankApiRepository(ExternalApiRepository):
                              )
                         )
                     except (ValueError, TypeError) as val_err:
-                        # Omitimos datos que fallen validación de dominio (e.g. años negativos, valores incorrectos)
                         print(f"[API Warning] Dato omitido por validación de dominio: {val_err}")
                         continue
 
             return entidades_datos
 
         except requests.exceptions.RequestException as e:
-            # En caso de error de red o de HTTP, elevamos una excepción de dominio
             mensaje_error = f"Error al conectar con la API del Banco Mundial para el indicador '{indicador.nombre}': {e}"
             print(f"[API Error] {mensaje_error}")
             raise ApiCaidaError(mensaje_error) from e
         except Exception as e:
-            # Otros errores inesperados (parsing, etc.)
             mensaje_error = f"Error inesperado procesando datos de la API para '{indicador.nombre}': {e}"
             print(f"[API Parse Error] {mensaje_error}")
             raise ApiCaidaError(mensaje_error) from e
-

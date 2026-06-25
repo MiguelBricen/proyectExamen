@@ -1,43 +1,19 @@
 """
 Servicio de Aplicación (DashboardApplicationService).
-Coordina los casos de uso principales, el caché técnico y las llamadas a repositorios.
-Diseñado bajo el principio de inversión de dependencias (DI) sin imports de infraestructura a nivel de módulo.
+Implementa el caso de uso del Dashboard (DashboardUseCase) interactuando con los puertos de persistencia y API.
 """
-from typing import List, Optional, Dict
+from typing import List, Optional
 from dataclasses import dataclass
 from domain.entities import IndicadorEconomico, DatoHistorico
-from domain.value_objects import Year, Source
-from domain.repositories import IndicadorRepository, DatoHistoricoRepository, ExternalApiRepository
+from domain.value_objects import Year
 from domain.exceptions import ApiCaidaError, DatosNoEncontradosError
+from domain.catalog import INDICADOR_CATALOG
 
-DEFAULT_CATALOG: Dict[str, dict] = {
-    "PIB (USD)": {
-        "codigo": "NY.GDP.MKTP.CD",
-        "unidad": "USD",
-        "descripcion": "Producto Interno Bruto en dólares corrientes. Mide el valor total de bienes y servicios producidos en Nicaragua."
-    },
-    "Inflación (%)": {
-        "codigo": "FP.CPI.TOTL.ZG",
-        "unidad": "%",
-        "descripcion": "Variación porcentual del Índice de Precios al Consumidor (IPC). Refleja el aumento general de precios en la economía."
-    },
-    "Desempleo (%)": {
-        "codigo": "SL.UEM.TOTL.ZS",
-        "unidad": "%",
-        "descripcion": "Porcentaje de la fuerza laboral sin empleo. Incluye personas que buscan trabajo activamente."
-    },
-    "Población Total": {
-        "codigo": "SP.POP.TOTL",
-        "unidad": "personas",
-        "descripcion": "Número total de habitantes en Nicaragua según estimaciones del Banco Mundial."
-    },
-    "Esperanza de Vida": {
-        "codigo": "SP.DYN.LE00.IN",
-        "unidad": "años",
-        "descripcion": "Promedio de años que se espera que viva un recién nacido si las condiciones de mortalidad actuales se mantienen."
-    }
-}
-
+from application.ports.inbound.dashboard_use_case import DashboardUseCase
+from application.ports.outbound.indicador_repository import IndicadorRepository
+from application.ports.outbound.dato_historico_repository import DatoHistoricoRepository
+from application.ports.outbound.external_api_repository import ExternalApiRepository
+from application.ports.outbound.cache_service_port import CacheServicePort
 
 @dataclass
 class DatosIndicadorResult:
@@ -45,8 +21,7 @@ class DatosIndicadorResult:
     datos: List[DatoHistorico]
     fuente_efectiva: str  # "API del Banco Mundial" o "Base de Datos Local (Offline)"
 
-
-class DashboardApplicationService:
+class DashboardApplicationService(DashboardUseCase):
     """
     Controlador central de la aplicación que coordina la persistencia y descargas de red.
     """
@@ -55,7 +30,7 @@ class DashboardApplicationService:
         indicador_repo: IndicadorRepository,
         dato_historico_repo: DatoHistoricoRepository,
         api_repo: ExternalApiRepository,
-        cache_service
+        cache_service: CacheServicePort
     ):
         """Inyección de dependencias a través del constructor."""
         self.indicador_repo = indicador_repo
@@ -68,11 +43,9 @@ class DashboardApplicationService:
         Registra los indicadores del catálogo predeterminado en la base de datos local.
         Reutiliza los IDs (UUIDs) si ya existen.
         """
-        for nombre, meta in DEFAULT_CATALOG.items():
-            # Buscar por código externo
+        for nombre, meta in INDICADOR_CATALOG.items():
             existente = self.indicador_repo.buscar_por_codigo_externo(meta["codigo"])
             if existente:
-                # Actualizar si cambió descripción
                 existente.nombre = nombre
                 existente.descripcion = meta["descripcion"]
                 existente.unidad = meta["unidad"]
@@ -101,11 +74,9 @@ class DashboardApplicationService:
         if not indicador:
             raise DatosNoEncontradosError(f"Indicador con código {codigo_externo} no registrado en el catálogo.")
 
-        # Verificar si hay caché local y no se fuerza descarga
         tiene_cache = self.cache_service.tiene_datos_en_cache(indicador.id, anio_inicio, anio_fin)
 
         if tiene_cache and not forzar_descarga:
-            # Recuperar de SQLite directamente
             datos_locales = self.dato_historico_repo.buscar_serie(
                 indicador.id,
                 Year(anio_inicio),
@@ -117,7 +88,6 @@ class DashboardApplicationService:
                     fuente_efectiva="Base de Datos Local (Offline)"
                 )
 
-        # Si no hay caché o se fuerza, intentamos descargar de la API
         try:
             datos_descargados = self.api_repo.obtener_datos(
                 indicador,
@@ -125,7 +95,6 @@ class DashboardApplicationService:
                 anio_fin
             )
 
-            # Persistir en base de datos local
             if datos_descargados:
                 self.dato_historico_repo.guardar_serie(datos_descargados)
                 self.cache_service.registrar_descarga(
@@ -138,11 +107,9 @@ class DashboardApplicationService:
                     fuente_efectiva="API del Banco Mundial"
                 )
             
-            # Si la API responde vacío pero no falla por red, buscamos si hay algo local
             raise DatosNoEncontradosError(f"La API no retornó registros para {indicador.nombre} en el rango solicitado.")
 
         except ApiCaidaError as ex:
-            # Modo Offline: si la API falla por red, intentamos recuperar los datos locales
             print(f"[Offline Mode Fallback] API no disponible: {ex}. Intentando leer de SQLite...")
             datos_locales = self.dato_historico_repo.buscar_serie(
                 indicador.id,
@@ -154,7 +121,6 @@ class DashboardApplicationService:
                     datos=datos_locales,
                     fuente_efectiva="Base de Datos Local (Offline)"
                 )
-            # Si tampoco hay datos locales, elevamos un error de datos no encontrados
             raise DatosNoEncontradosError(
                 f"No se pudieron obtener datos de la API ({ex}) ni existen registros locales offline."
             ) from ex
@@ -163,22 +129,21 @@ class DashboardApplicationService:
         """
         Genera un resumen técnico del estado de la base de datos local.
         """
-        from infrastructure.database.connection import RUTA_BD, os
+        from infrastructure.adapters.outbound.sqlite.connection import RUTA_BD
+        import os
         conexion = None
         total_registros = 0
         codigos_con_datos = []
         existe_bd = os.path.exists(RUTA_BD)
 
         if existe_bd:
-            from infrastructure.database.connection import get_connection
+            from infrastructure.adapters.outbound.sqlite.connection import get_connection
             try:
                 conexion = get_connection()
                 cursor = conexion.cursor()
-                # Total de registros
                 cursor.execute("SELECT COUNT(*) FROM datos_historicos")
                 total_registros = cursor.fetchone()[0]
 
-                # Obtener códigos con datos
                 cursor.execute("""
                     SELECT DISTINCT i.codigo_banco_mundial 
                     FROM datos_historicos d
@@ -213,14 +178,14 @@ def crear_servicio_aplicacion() -> DashboardApplicationService:
     Función fábrica que compone y resuelve las dependencias de infraestructura
     para inyectarlas en el servicio de aplicación.
     """
-    from infrastructure.repositories.sqlite_repositories import SQLiteIndicadorRepository, SQLiteDatoHistoricoRepository
-    from infrastructure.repositories.worldbank_api_repository import WorldBankApiRepository
-    from infrastructure.cache.cache_service import CacheService
+    from infrastructure.adapters.outbound.sqlite.sqlite_repositories import SQLiteIndicadorRepository, SQLiteDatoHistoricoRepository
+    from infrastructure.adapters.outbound.api.worldbank_api_repository import WorldBankApiRepository
+    from infrastructure.adapters.outbound.cache.sqlite_cache_service import SQLiteCacheService
 
     indicador_repo = SQLiteIndicadorRepository()
     dato_historico_repo = SQLiteDatoHistoricoRepository(indicador_repo)
     api_repo = WorldBankApiRepository()
-    cache_service = CacheService()
+    cache_service = SQLiteCacheService()
 
     return DashboardApplicationService(
         indicador_repo=indicador_repo,
